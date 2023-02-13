@@ -106,13 +106,20 @@ void sendMessage(String message)
   // memcpy((void *)&floatValue, tempBuffer, numFloatBytes);
   // Serial.println(floatValue,6);
 
-  float lat = 19.1047461; // Accuracy is only 5 decimals send as text in message
-  float lon = 72.8509614; // Accuracy is only 5 decimals send as text in message
-  float temperature = -28.678;
+  // int value = (voltage * 100.0) + 0.5;
+  // // Extract each digit with the 'modulo' operator (%)
+
+  // char hundredsDigit = '0' + ((value / 100) % 10);
+  // char tensDigit =  '0' + ((value / 10) % 10);
+  // char onesDigit =  '0' + (value % 10);
 
   // char Latd[1] = {};
   // dtostrf(lat, 9, 7, Latd);
   // Serial.println(Latd);
+
+  float lat = 19.1047461; // Accuracy is only 5 decimals send as text in message
+  float lon = 72.8509614; // Accuracy is only 5 decimals send as text in message
+  float temperature = -28.678;
 
   LoRa.beginPacket();              // start packet
   LoRa.write(255);                 // spaceer

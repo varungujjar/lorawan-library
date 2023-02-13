@@ -1,0 +1,133 @@
+// This program sends a response whenever it receives the "INF" mens
+//
+// Copyright 2018 Rui Silva.
+// This file is part of rpsreal/LoRa_Ra-02_Arduino
+// Based on example Arduino9x_RX RADIOHEAD library
+// It is designed to work with LORA_SERVER
+
+#include <SPI.h>
+#include <RH_RF95.h>
+
+#define RFM95_CS 10
+#define RFM95_RST 9
+#define RFM95_INT 2
+#define RF95_FREQ 434.0                  // Change to 434.0 or other frequency, must match RX's freq!
+
+RH_RF95 rf95(RFM95_CS, RFM95_INT);       // Singleton instance of the radio driver
+uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];    
+uint8_t len = sizeof(buf);
+
+
+byte LOCAL_ADDRESS = 0xBB;              // address of this device -  0xBC (188)  or 0XBB (187)
+byte DESTINATION_ADDRESS = 0xFF;        // destination to send to
+#define LED 13
+
+
+void setup() {
+
+  pinMode(LED, OUTPUT); 
+  pinMode(RFM95_RST, OUTPUT);
+  digitalWrite(RFM95_RST, HIGH);
+
+  while (!Serial);
+  Serial.begin(9600);
+  delay(100);
+  
+  
+  digitalWrite(RFM95_RST, LOW);         // manual reset module
+  delay(10);
+  digitalWrite(RFM95_RST, HIGH);
+  delay(10);
+
+  while (!rf95.init()) {
+    Serial.println("[LORA] Radio init failed");
+    while (1);
+  }
+
+  // Defaults after init are 434.0MHz, modulation GFSK_Rb250Fd250, +13dbM
+  if (!rf95.setFrequency(RF95_FREQ)) {
+    Serial.println("[LORA] SetFrequency failed");
+    while (1);
+  }
+
+  // The default transmitter power is 13dBm, using PA_BOOST.
+  // If you are using RFM95/96/97/98 modules which uses the PA_BOOST transmitter pin, then 
+  // you can set transmitter powers from 5 to 23 dBm:
+
+  // Bw = 125 kHz, Cr = 4/8, Sf = 4096chips/symbol, CRC on. 
+  // Slow+long range. 
+  //rf95.setModemConfig(RH_RF95::Bw125Cr48Sf4096);
+
+  // Defaults after init are 434.0MHz, Bw = 125 kHz, Cr = 4/5, Sf = 128chips/symbol, CRC on
+  // Medium Range
+  
+  rf95.setTxPower(18);
+  Serial.println("[LORA] RA-02 Module initialised");
+}
+    
+
+void sendMessage(){
+  Serial.println("[LORA] Send message: DATA ARDUINO");
+  uint8_t data[] = "DATA ARDUINO";
+  rf95.send(data, sizeof(data)); 
+  rf95.waitPacketSent();
+}
+
+
+
+void onReceive(){
+  if (rf95.available()){    
+    
+    if (rf95.recv(buf, &len)){
+      // digitalWrite(LED, HIGH);
+      // RH_RF95::printBuffer("Got: ", buf, len);
+      
+      uint8_t bufLen = sizeof(buf);
+      uint8_t receiver_address = (byte)buf[0];
+      uint8_t sender_address = (byte)buf[1];
+
+      uint8_t data_3 = (byte)buf[2];
+      uint8_t data_4 = (byte)buf[3];
+      uint8_t data_5 = (byte)buf[4];
+
+
+      uint8_t messageLen = (byte)buf[5];
+      uint8_t i = 0;
+      String incoming = "";
+      while(i<messageLen){
+          i++;
+          int dataIndex = 5+i;
+          incoming += (char)buf[dataIndex];
+      }
+
+      // if the recipient isn't this device or broadcast,
+      if (receiver_address != LOCAL_ADDRESS && receiver_address != sender_address) {
+        Serial.println("[LORA] This message is not for me.");
+        return;                            
+      }
+
+      Serial.println("Sent to: 0x" + String(receiver_address, HEX));
+      Serial.println("Received from: 0x" + String(sender_address, HEX));
+      Serial.println("Servo Angle: " + String(data_3));
+      Serial.println("Motor A Direction: " + String(data_4));
+      Serial.println("PWM: " + String(data_5));
+      Serial.println("RSSI: " + String(rf95.lastRssi()));
+      Serial.println("SNR: " + String(rf95.lastSNR()));
+      Serial.println("Message length: " + String(messageLen));
+      Serial.println("Message: " + String(incoming));
+      Serial.println("\n\n");
+      sendMessage();
+      // digitalWrite(LED, LOW);
+    }
+    else
+    {
+      Serial.println("[LORA] Receive failed");
+    }
+  }
+}
+
+
+void loop()
+{
+  onReceive();
+}

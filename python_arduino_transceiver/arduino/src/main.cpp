@@ -97,6 +97,7 @@ void sendMessage(String message)
   // Float values consits of 4 Bytes always this is standard refer to this list
   // https://docs.python.org/3/library/struct.html#format-characters
   // https://www.programmingelectronics.com/dtostrf/
+  // https://github.com/vtomanov/Gps64
   // const uint8_t numFloatBytes {sizeof(float)};
   // char tempBuffer[numFloatBytes];
   // float floatValue;

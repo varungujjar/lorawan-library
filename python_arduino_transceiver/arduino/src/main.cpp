@@ -1,15 +1,26 @@
 #include <SPI.h>
 #include <LoRa.h>
 #include <avr/wdt.h>
+#include <Base64.h> // https://github.com/adamvr/arduino-base64
+#include <AESLib.h> // https://github.com/DavyLandman/AESLib
 
 #define csPin 10
 #define resetPin 9
 #define irqPin 2
 
-String outgoing;                 // outgoing message
-byte msgCount = 0;               // count of outgoing messages
 byte LOCAL_ADDRESS = 0xBB;       // address of this device -  0xBC (188)  or 0XBB (187)
 byte DESTINATION_ADDRESS = 0xFF; // destination to send to
+
+uint8_t key[] = "1234567890123456";
+
+// // Initialise and configure AES Encryption settings
+// AESLib aesLib;
+// char cleartext[256];
+// char ciphertext[512];
+
+// // AES Encryption key
+// byte aes_key[] = {0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30};
+// byte aes_iv[N_BLOCK] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 long lastSendTime = 0;
 int interval = 2000;
@@ -86,6 +97,18 @@ void checkTimeout()
   }
 }
 
+// String encrypt(char *msg, byte iv[])
+// {
+//   int msgLen = strlen(msg);
+//   Serial.print("msglen = ");
+//   Serial.println(msgLen);
+//   char encrypted[4 * msgLen];
+//   aesLib.encrypt64(msg, encrypted, aes_key, iv);
+//   Serial.print("encrypted = ");
+//   Serial.println(encrypted);
+//   return String(encrypted);
+// }
+
 void sendMessage(String message)
 {
 
@@ -114,12 +137,37 @@ void sendMessage(String message)
   // char tensDigit =  '0' + ((value / 10) % 10);
   // char onesDigit =  '0' + (value % 10);
 
+  // https://www.thethingsnetwork.org/forum/t/how-to-send-float-value-and-convert-it-into-bytes/9646/9
+  //  mydata[0] = LatitudeBinary >> 16;
+  //  mydata[1] = LatitudeBinary >> 8;
+  //  mydata[2] = LatitudeBinary;
+
   // char Latd[1] = {};
   // dtostrf(lat, 9, 7, Latd);
   // Serial.println(Latd);
 
-  float lat = 19.1047461; // Accuracy is only 5 decimals send as text in message
-  float lon = 72.8509614; // Accuracy is only 5 decimals send as text in message
+  // byte data[256];
+
+  // memset(data, 0, sizeof(data));
+
+  // char input[] = "Hey There one tw Hey There one t Hey There one t";
+  char data[] = "Hey There";
+
+  byte input[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  memcpy(input, data, sizeof(data));
+
+  // Serial.println(input);
+
+  aes128_enc_single(key, input);
+
+  uint8_t inputLen = sizeof(input) - 1;
+  uint8_t encodedLen = base64_enc_len(inputLen);
+
+  uint8_t encoded[encodedLen + 1];
+  base64_encode((char *)encoded, (char *)input, inputLen);
+
+  float lat = 19.1047461; // Accuracy is only 5 decimals send as text in message if you want more decimal accuracy
+  float lon = 72.8509614; // Accuracy is only 5 decimals send as text in message if you want more decimal accuracy
   float temperature = -28.678;
 
   LoRa.beginPacket();              // start packet
@@ -129,10 +177,15 @@ void sendMessage(String message)
   LoRa.write((uint8_t *)(&lat), sizeof(lat));
   LoRa.write((uint8_t *)(&lon), sizeof(lon));
   LoRa.write((uint8_t *)(&temperature), sizeof(temperature));
-  LoRa.write(message.length()); // add payload length
-  LoRa.print(message);          // add payload
-  LoRa.endPacket();             // finish packet and send it
-  Serial.println("[LORA] Sent Data" + message);
+
+  LoRa.write(sizeof(encoded));
+  LoRa.write((uint8_t *)(&encoded), sizeof(encoded));
+
+  // LoRa.write(message.length()); // add payload length
+  // LoRa.print(message);          // add payload
+  LoRa.endPacket(); // finish packet and send it
+
+  Serial.print((char *)encoded);
 }
 
 void onReceive(int packetSize)

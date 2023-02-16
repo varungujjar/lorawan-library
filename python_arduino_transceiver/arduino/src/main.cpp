@@ -8,12 +8,14 @@
 #define resetPin 9
 #define irqPin 2
 
-#define ENCRYPT_BIT_SIZE 16
-
 byte LOCAL_ADDRESS = 0xBB;       // address of this device -  0xBC (188)  or 0XBB (187)
 byte DESTINATION_ADDRESS = 0xFF; // destination to send to
 
+#define ENCRYPTED 1
+#define ENCRYPT_BIT_SIZE 16
 uint8_t key[] = "1234567890123456";
+
+#define SERIAL_DEBUG 1
 
 // // Initialise and configure AES Encryption settings
 // AESLib aesLib;
@@ -46,9 +48,12 @@ void initLora()
   LoRa.setPins(csPin, resetPin, irqPin);
   if (!LoRa.begin(434E6))
   { // initialize ratio at 434 MHz
+#if SERIAL_DEBUG
     Serial.println("[LORA] Init failed. Check your connections.");
+#endif
     while (1)
-      ; // if failed, do nothing
+      ;
+    // if failed, do nothing
   }
   // LoRa.setSyncWord(0xF3);
   // LoRa.dumpRegisters(Serial);
@@ -63,7 +68,10 @@ void initLora()
   // LoRa.setPreambleLength(8);
   // LoRa.setCodingRate4(8); //5 For Low Power
   // LoRa.enableCrc();
+
+#if SERIAL_DEBUG
   Serial.println("[LORA] Initialized");
+#endif
 }
 
 void setup()
@@ -108,6 +116,13 @@ String encrypt(char *msg)
   int encodedLen = base64_enc_len(inputLen);
   char encoded[encodedLen];
   base64_encode((char *)encoded, (char *)input, inputLen);
+
+#if SERIAL_DEBUG
+  Serial.print("[LORA][SEND][AES128 ENCRYPTED] ");
+  Serial.print(encoded);
+  Serial.println("(" + String(sizeof(encoded)) + ")");
+#endif
+
   return (char *)encoded;
 }
 
@@ -127,9 +142,8 @@ int bitLen(int inputLen)
   return result;
 }
 
-void sendMessage(String message)
+void sendMessage(char *message)
 {
-
   // Arduino Processors can only handle upto 7 Digits in 32bit RAM (4 x 8 bytes) Memory
   // float / double doesnt make any difference
   // sending more than 5 decimals requires you to send as string if you need more accuracy
@@ -164,9 +178,15 @@ void sendMessage(String message)
   // dtostrf(lat, 9, 7, Latd);
   // Serial.println(Latd);
 
+  // Serial.println(message);
   char input[] = "PM25=35|PM10=80|TMP=24.56|HUM=80|PRE=1008.90|CO2=2478|AQI=180|LGT=25000";
   int inputLen = sizeof(input);
   int inputBitLen = bitLen(inputLen);
+
+#if SERIAL_DEBUG
+  Serial.print("[LORA][SEND] ");
+  Serial.println(input);
+#endif
 
   float lat = 19.1047461; // Accuracy is only 5 decimals send as text in message if you want more decimal accuracy
   float lon = 72.8509614; // Accuracy is only 5 decimals send as text in message if you want more decimal accuracy
@@ -180,18 +200,17 @@ void sendMessage(String message)
   LoRa.write((uint8_t *)(&lon), sizeof(lon));
   LoRa.write((uint8_t *)(&temperature), sizeof(temperature));
 
+#if ENCRYPTED
   LoRa.write(inputBitLen);
   char buffer[ENCRYPT_BIT_SIZE];
   memset(buffer, 0, ENCRYPT_BIT_SIZE);
   uint8_t a = 0;
 
   // Protocol : COUNT LOOP | MESSAGELENGTH | MESSAGE | MESSAGELENGTH | MESSAGE | ...
-
   for (uint8_t i = 0; i < inputLen; i++)
   {
     if (i > 0 && (i % 16 == 0))
     {
-      Serial.println(buffer);
       String encoded = encrypt(buffer);
       LoRa.write(encoded.length());
       LoRa.print(encoded);
@@ -202,7 +221,6 @@ void sendMessage(String message)
 
     if ((inputLen - i) < 16 && (inputLen - i) == 1)
     {
-      Serial.println(buffer);
       String encoded = encrypt(buffer);
       LoRa.write(encoded.length());
       LoRa.print(encoded);
@@ -212,7 +230,14 @@ void sendMessage(String message)
     }
     buffer[a++] = input[i];
   }
-  LoRa.endPacket(); // finish packet and send it
+#endif
+
+#if not ENCRYPTED
+  LoRa.write(sizeof(input));
+  LoRa.print((uint8_t *)(&input), sizeof(input));
+#endif
+
+  LoRa.endPacket();
 }
 
 void onReceive(int packetSize)
@@ -225,19 +250,19 @@ void onReceive(int packetSize)
     lastMsgTime = millis();
   }
 
-  Serial.println("\n\n");
   LoRa.read(); // Requires first byte to be a string and so we discard it
 
   uint8_t receiver_address = LoRa.read();
   uint8_t sender_address = LoRa.read();
-
   uint8_t data_1 = LoRa.read();
   uint8_t data_2 = LoRa.read();
   uint8_t data_3 = LoRa.read();
 
   if (receiver_address != LOCAL_ADDRESS && receiver_address != sender_address)
   {
-    Serial.println("[LORA] This message is not for me.");
+#if SERIAL_DEBUG
+    Serial.println("[LORA][RECEIVED] This message is not for me.");
+#endif
     return;
   }
 
@@ -253,22 +278,27 @@ void onReceive(int packetSize)
 
     if (messageLen != message.length())
     {
-      Serial.println("[LORA] Message length does not match length");
+#if SERIAL_DEBUG
+      Serial.println("[LORA][RECEIVED] Message length does not match length");
+#endif
       return;
     }
 
+#if SERIAL_DEBUG
     Serial.println("\n\n");
-    Serial.println("Sent to: 0x" + String(receiver_address, HEX));
-    Serial.println("Received from: 0x" + String(sender_address, HEX));
-    Serial.println("Servo Angle: " + String(data_1));
-    Serial.println("Motor A Direction: " + String(data_2));
-    Serial.println("PWM: " + String(data_3));
-    Serial.println("RSSI: " + String(LoRa.packetRssi()));
-    Serial.println("SNR: " + String(LoRa.packetSnr()));
-    Serial.println("Message length: " + String(messageLen));
-    Serial.println("Message: " + String(message));
+    Serial.println("[LORA][RECEIVED] To: 0x" + String(receiver_address, HEX));
+    Serial.println("[LORA][RECEIVED] From: 0x" + String(sender_address, HEX));
+    Serial.println("[LORA][RECEIVED] Servo Angle: " + String(data_1));
+    Serial.println("[LORA][RECEIVED] Motor A Direction: " + String(data_2));
+    Serial.println("[LORA][RECEIVED] PWM: " + String(data_3));
+    Serial.println("[LORA][RECEIVED] RSSI: " + String(LoRa.packetRssi()));
+    Serial.println("[LORA][RECEIVED] SNR: " + String(LoRa.packetSnr()));
+    Serial.println("[LORA][RECEIVED] " + String(message) + "(" + String(messageLen) + ")");
+    Serial.println("\n");
+#endif
   }
-  sendMessage("HeLoRa World!");
+
+  sendMessage((char *)"Myy message");
 }
 
 void loop()

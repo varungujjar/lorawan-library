@@ -8,7 +8,7 @@
 #define resetPin 9
 #define irqPin 2
 
-#define BUFFER_SIZE 17
+#define ENCRYPT_BIT_SIZE 16
 
 byte LOCAL_ADDRESS = 0xBB;       // address of this device -  0xBC (188)  or 0XBB (187)
 byte DESTINATION_ADDRESS = 0xFF; // destination to send to
@@ -99,37 +99,32 @@ void checkTimeout()
   }
 }
 
-// String encrypt(char *msg, byte iv[])
-// {
-//   int msgLen = strlen(msg);
-//   Serial.print("msglen = ");
-//   Serial.println(msgLen);
-//   char encrypted[4 * msgLen];
-//   aesLib.encrypt64(msg, encrypted, aes_key, iv);
-//   Serial.print("encrypted = ");
-//   Serial.println(encrypted);
-//   return String(encrypted);
-// }
-
 String encrypt(char *msg)
 {
-
   char input[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   memcpy(input, msg, strlen(msg));
-
-  Serial.println(sizeof(input));
-
   aes128_enc_single(key, input);
-
-  Serial.println(input);
-  Serial.println(sizeof(input));
-
   int inputLen = sizeof(input);
   int encodedLen = base64_enc_len(inputLen);
   char encoded[encodedLen];
-
   base64_encode((char *)encoded, (char *)input, inputLen);
   return (char *)encoded;
+}
+
+int bitLen(int inputLen)
+{
+  float float_len = inputLen / float(ENCRYPT_BIT_SIZE);
+  int int_len = inputLen / ENCRYPT_BIT_SIZE;
+  int result = 0;
+  if (float_len > float(int_len))
+  {
+    result = int_len + 1;
+  }
+  else
+  {
+    result = int_len;
+  }
+  return result;
 }
 
 void sendMessage(String message)
@@ -169,38 +164,9 @@ void sendMessage(String message)
   // dtostrf(lat, 9, 7, Latd);
   // Serial.println(Latd);
 
-  // byte data[256];
-
-  // memset(data, 0, sizeof(data));
-
-  char input[] = "Hello there how are you this is a long text here cool for me tooo this part";
+  char input[] = "PM25=35|PM10=80|TMP=24.56|HUM=80|PRE=1008.90|CO2=2478|AQI=180|LGT=25000";
   int inputLen = sizeof(input);
-
-  char buffer[BUFFER_SIZE];
-
-  uint8_t a = 0;
-  for (uint8_t i = 0; i < inputLen; i++)
-  {
-    if (i > 0 && (i % 16 == 0))
-    {
-      Serial.println(buffer);
-      Serial.println(sizeof(buffer));
-      memset(buffer, 0, BUFFER_SIZE);
-      a = 0;
-    }
-
-    if ((inputLen - i) < 16 && (inputLen - i) == 1)
-    {
-      Serial.println(buffer);
-      Serial.println(sizeof(buffer));
-      memset(buffer, 0, BUFFER_SIZE);
-      a = 0;
-    }
-    buffer[a++] = input[i];
-  }
-
-  String encoded_ = encrypt((char *)"Hello there");
-  Serial.print(encoded_);
+  int inputBitLen = bitLen(inputLen);
 
   float lat = 19.1047461; // Accuracy is only 5 decimals send as text in message if you want more decimal accuracy
   float lon = 72.8509614; // Accuracy is only 5 decimals send as text in message if you want more decimal accuracy
@@ -214,11 +180,38 @@ void sendMessage(String message)
   LoRa.write((uint8_t *)(&lon), sizeof(lon));
   LoRa.write((uint8_t *)(&temperature), sizeof(temperature));
 
-  LoRa.write(encoded_.length());
-  LoRa.print(encoded_);
+  LoRa.write(inputBitLen);
+  char buffer[ENCRYPT_BIT_SIZE];
+  memset(buffer, 0, ENCRYPT_BIT_SIZE);
+  uint8_t a = 0;
 
-  // LoRa.write(message.length()); // add payload length
-  // LoRa.print(message);          // add payload
+  // Protocol : COUNT LOOP | MESSAGELENGTH | MESSAGE | MESSAGELENGTH | MESSAGE | ...
+
+  for (uint8_t i = 0; i < inputLen; i++)
+  {
+    if (i > 0 && (i % 16 == 0))
+    {
+      Serial.println(buffer);
+      String encoded = encrypt(buffer);
+      LoRa.write(encoded.length());
+      LoRa.print(encoded);
+
+      memset(buffer, 0, ENCRYPT_BIT_SIZE);
+      a = 0;
+    }
+
+    if ((inputLen - i) < 16 && (inputLen - i) == 1)
+    {
+      Serial.println(buffer);
+      String encoded = encrypt(buffer);
+      LoRa.write(encoded.length());
+      LoRa.print(encoded);
+
+      memset(buffer, 0, ENCRYPT_BIT_SIZE);
+      a = 0;
+    }
+    buffer[a++] = input[i];
+  }
   LoRa.endPacket(); // finish packet and send it
 }
 

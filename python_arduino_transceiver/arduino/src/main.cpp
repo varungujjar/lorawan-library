@@ -107,6 +107,11 @@ void checkTimeout()
   }
 }
 
+/**
+ * Encryption
+ * AES128 + Base64 Encryption for 16 bit Sentence
+ * Lorawan RA-02
+ */
 String encrypt(char *msg)
 {
   char input[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -118,13 +123,18 @@ String encrypt(char *msg)
   base64_encode((char *)encoded, (char *)input, inputLen);
 
 #if SERIAL_DEBUG
-  Serial.print("[LORA][SEND][AES128 ENCRYPTED] ");
+  Serial.print("[LORA][SEND][AES128 ENCRYPTED CHUNK] ");
   Serial.print(encoded);
   Serial.println("(" + String(sizeof(encoded)) + ")");
 #endif
 
   return (char *)encoded;
 }
+
+/**
+ * Calculate 16 Bit chunks required to Split sentence
+ * Lorawan RA-02
+ */
 
 int bitLen(int inputLen)
 {
@@ -141,6 +151,11 @@ int bitLen(int inputLen)
   }
   return result;
 }
+
+/**
+ * Send Messages
+ * Lorawan RA-02
+ */
 
 void sendMessage(char *message)
 {
@@ -181,11 +196,11 @@ void sendMessage(char *message)
   // Serial.println(message);
   char input[] = "PM25=35|PM10=80|TMP=24.56|HUM=80|PRE=1008.90|CO2=2478|AQI=180|LGT=25000";
   int inputLen = sizeof(input);
-  int inputBitLen = bitLen(inputLen);
 
 #if SERIAL_DEBUG
   Serial.print("[LORA][SEND] ");
-  Serial.println(input);
+  Serial.print(input);
+  Serial.println("(" + String(inputLen) + ")");
 #endif
 
   float lat = 19.1047461; // Accuracy is only 5 decimals send as text in message if you want more decimal accuracy
@@ -201,6 +216,7 @@ void sendMessage(char *message)
   LoRa.write((uint8_t *)(&temperature), sizeof(temperature));
 
 #if ENCRYPTED
+  int inputBitLen = bitLen(inputLen);
   LoRa.write(inputBitLen);
   char buffer[ENCRYPT_BIT_SIZE];
   memset(buffer, 0, ENCRYPT_BIT_SIZE);
@@ -233,8 +249,8 @@ void sendMessage(char *message)
 #endif
 
 #if not ENCRYPTED
-  LoRa.write(sizeof(input));
-  LoRa.print((uint8_t *)(&input), sizeof(input));
+  LoRa.write(inputLen);
+  LoRa.write((uint8_t *)(&input), inputLen);
 #endif
 
   LoRa.endPacket();
